@@ -2,6 +2,7 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { toast } from 'sonner@2.0.3';
 import AlertRuleSidebar from './AlertRuleSidebar';
 import ContentHubSidebar from './ContentHubSidebar';
+import DismissRuleModal, { type DismissalEntry, type RuleDismissals, isGloballyDismissed, dismissedTenants } from './DismissRuleModal';
 import ClientMisalignmentSidebar from './ClientMisalignmentSidebar';
 import DataRequiredSidebar from './DataRequiredSidebar';
 import DataRequiredSidebarV2 from './DataRequiredSidebarV2';
@@ -26,6 +27,7 @@ import {
   Shield,
   Users,
   Eye,
+  EyeOff,
   Edit,
   Trash2,
   Copy,
@@ -34,7 +36,10 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
-  Upload
+  Upload,
+  BellOff,
+  RotateCcw,
+  Clock,
 } from 'lucide-react';
 import {
   Tooltip,
@@ -696,6 +701,52 @@ export default function AlertRules() {
   const [clientMisalignmentRule, setClientMisalignmentRule] = useState<AlertRule | null>(null);
   const [dataRequiredRule, setDataRequiredRule] = useState<AlertRule | null>(null);
 
+  // Dismissal state — persisted to localStorage
+  const STORAGE_KEY = 'seculyze-dismissals-v1';
+  const [allDismissals, setAllDismissals] = useState<Record<string, RuleDismissals>>(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  });
+  const [showDismissed, setShowDismissed] = useState(false);
+  const [dismissModalRule, setDismissModalRule] = useState<AlertRule | null>(null);
+  const [dismissModalInitialTab, setDismissModalInitialTab] = useState<'dismiss' | 'restore' | 'history'>('dismiss');
+  const [openOverflowMenu, setOpenOverflowMenu] = useState<string | null>(null);
+
+  const saveDismissals = (next: Record<string, RuleDismissals>) => {
+    setAllDismissals(next);
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch {}
+  };
+
+  const handleDismissRule = (ruleId: string, entry: DismissalEntry) => {
+    const existing = allDismissals[ruleId] ?? { entries: [] };
+    saveDismissals({ ...allDismissals, [ruleId]: { entries: [...existing.entries, entry] } });
+    const scopeLabel = entry.scope === 'global' ? 'all tenants' : `${entry.tenants?.length} tenant(s)`;
+    toast.success(`Recommendation dismissed for ${scopeLabel}`);
+  };
+
+  const handleRestoreRule = (ruleId: string, scope: 'global' | 'per-tenant', tenants?: string[]) => {
+    const existing = allDismissals[ruleId];
+    if (!existing) return;
+    const now = new Date().toISOString();
+    const updated = existing.entries.map(e => {
+      if (e.restoredBy) return e;
+      if (scope === 'global' && e.scope === 'global') return { ...e, restoredBy: 'John Doe', restoredAt: now };
+      if (scope === 'per-tenant' && e.scope === 'per-tenant') {
+        const matchedTenants = tenants ?? [];
+        const newTenants = (e.tenants ?? []).filter(t => !matchedTenants.includes(t));
+        if (newTenants.length === 0) return { ...e, restoredBy: 'John Doe', restoredAt: now };
+        return { ...e, tenants: newTenants };
+      }
+      return e;
+    });
+    saveDismissals({ ...allDismissals, [ruleId]: { entries: updated } });
+    toast.success('Recommendation restored');
+  };
+
   // Filter states
   const [selectedDate, setSelectedDate] = useState('All time');
   const [isDateDropdownOpen, setIsDateDropdownOpen] = useState(false);
@@ -822,6 +873,9 @@ export default function AlertRules() {
   // Filter data
   const filteredRules = useMemo(() => {
     return alertRules.filter(rule => {
+      // Hide globally dismissed rules unless user toggled "show dismissed"
+      if (!showDismissed && isGloballyDismissed(allDismissals[rule.id])) return false;
+
       const matchesSearch = rule.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           rule.author.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           rule.mitre.some(m => m.toLowerCase().includes(searchQuery.toLowerCase()));
@@ -843,7 +897,7 @@ export default function AlertRules() {
 
       return matchesSearch && matchesState && matchesValue && matchesAuthor && matchesAttention && matchesNewlyImported && matchesCardFilter && matchesMitreFilter;
     });
-  }, [alertRules, searchQuery, selectedFilters, cardFilter, mitreFilter]);
+  }, [alertRules, searchQuery, selectedFilters, cardFilter, mitreFilter, allDismissals, showDismissed]);
 
   // Sort data
   const sortedRules = useMemo(() => {
@@ -1665,6 +1719,22 @@ export default function AlertRules() {
                       )}
                     </div>
 
+                    {/* Show dismissed toggle */}
+                    <div className="border-b border-gray-100">
+                      <label className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-gray-50 transition-colors">
+                        <div className="flex items-center gap-2">
+                          <EyeOff className="w-3.5 h-3.5 text-[#6b828c]" />
+                          <span className="text-sm text-[#092E3F]">Show dismissed</span>
+                        </div>
+                        <div
+                          className={`w-9 h-5 rounded-full transition-colors relative ${showDismissed ? 'bg-[#2A96A8]' : 'bg-gray-200'}`}
+                          onClick={() => setShowDismissed(v => !v)}
+                        >
+                          <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${showDismissed ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                        </div>
+                      </label>
+                    </div>
+
                     {/* Clear Filters */}
                     <div className="p-4">
                       <button
@@ -2145,7 +2215,26 @@ export default function AlertRules() {
                     )}
                     {visibleColumns.attention && (
                       <td className="px-4 py-3 bg-[#f8fdfe]">
-                        <div className="flex justify-end">
+                        <div className="flex flex-col items-end gap-1">
+                          {(() => {
+                            const rd = allDismissals[rule.id];
+                            const globallyDismissed = isGloballyDismissed(rd);
+                            const partialTenants = dismissedTenants(rd);
+                            return (
+                              <>
+                                {globallyDismissed && (
+                                  <span className="flex items-center gap-1 text-[10px] text-[#6b828c] px-2 py-0.5 rounded-full bg-gray-100">
+                                    <BellOff className="w-2.5 h-2.5" /> Dismissed
+                                  </span>
+                                )}
+                                {!globallyDismissed && partialTenants.length > 0 && (
+                                  <span className="flex items-center gap-1 text-[10px] text-amber-600 px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200">
+                                    <BellOff className="w-2.5 h-2.5" /> {partialTenants.length} tenant{partialTenants.length !== 1 ? 's' : ''} dismissed
+                                  </span>
+                                )}
+                              </>
+                            );
+                          })()}
                           <TooltipProvider>
                             <Tooltip>
                               <TooltipTrigger asChild>
@@ -2244,15 +2333,84 @@ export default function AlertRules() {
                           >
                             {rule.action}
                           </button>
-                          <button
-                            className="p-1 hover:bg-gray-200 rounded transition-colors opacity-0 group-hover:opacity-100"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toast.info(`More actions for: ${rule.name}`);
-                            }}
-                          >
-                            <MoreHorizontal className="w-4 h-4 text-[#092E3F]/60" />
-                          </button>
+                          {/* Overflow menu */}
+                          <div className="relative">
+                            <button
+                              className="p-1 hover:bg-gray-200 rounded transition-colors opacity-0 group-hover:opacity-100"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setOpenOverflowMenu(openOverflowMenu === rule.id ? null : rule.id);
+                              }}
+                            >
+                              <MoreHorizontal className="w-4 h-4 text-[#092E3F]/60" />
+                            </button>
+
+                            {openOverflowMenu === rule.id && (
+                              <>
+                                <div
+                                  className="fixed inset-0 z-40"
+                                  onClick={(e) => { e.stopPropagation(); setOpenOverflowMenu(null); }}
+                                />
+                                <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-xl shadow-xl border border-gray-100 py-1 z-50">
+                                  {!isGloballyDismissed(allDismissals[rule.id]) && (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setOpenOverflowMenu(null);
+                                        setDismissModalInitialTab('dismiss');
+                                        setDismissModalRule(rule);
+                                      }}
+                                      className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-red-600 hover:bg-red-50 transition-colors"
+                                    >
+                                      <BellOff className="w-3.5 h-3.5" />
+                                      Dismiss recommendation
+                                    </button>
+                                  )}
+                                  {(isGloballyDismissed(allDismissals[rule.id]) || dismissedTenants(allDismissals[rule.id]).length > 0) && (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setOpenOverflowMenu(null);
+                                        setDismissModalInitialTab('restore');
+                                        setDismissModalRule(rule);
+                                      }}
+                                      className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-green-700 hover:bg-green-50 transition-colors"
+                                    >
+                                      <RotateCcw className="w-3.5 h-3.5" />
+                                      Restore recommendation
+                                    </button>
+                                  )}
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setOpenOverflowMenu(null);
+                                      setDismissModalInitialTab('history');
+                                      setDismissModalRule(rule);
+                                    }}
+                                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-[#6b828c] hover:bg-gray-50 transition-colors"
+                                  >
+                                    <Clock className="w-3.5 h-3.5" />
+                                    View dismissal history
+                                  </button>
+                                  <div className="border-t border-gray-100 my-1" />
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); setOpenOverflowMenu(null); toast.info('Copy rule'); }}
+                                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-[#092E3F] hover:bg-gray-50 transition-colors"
+                                  >
+                                    <Copy className="w-3.5 h-3.5" />
+                                    Copy rule
+                                  </button>
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); setOpenOverflowMenu(null); toast.info('Export rule'); }}
+                                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-[#092E3F] hover:bg-gray-50 transition-colors"
+                                  >
+                                    <Download className="w-3.5 h-3.5" />
+                                    Export
+                                  </button>
+                                </div>
+                              </>
+                            )}
+                          </div>
                         </div>
                       </td>
                     )}
@@ -2321,6 +2479,20 @@ export default function AlertRules() {
         <AlertRuleSidebar
           rule={selectedRule}
           onClose={() => setSelectedRule(null)}
+        />
+      )}
+
+      {/* Dismiss / Restore / Audit modal */}
+      {dismissModalRule && (
+        <DismissRuleModal
+          ruleName={dismissModalRule.name}
+          tenants={dismissModalRule.targetClients ?? dismissModalRule.clientNames ?? []}
+          dismissals={allDismissals[dismissModalRule.id]}
+          currentUser="John Doe"
+          initialTab={dismissModalInitialTab}
+          onDismiss={(entry) => handleDismissRule(dismissModalRule.id, entry)}
+          onRestore={(scope, tenants) => handleRestoreRule(dismissModalRule.id, scope, tenants)}
+          onClose={() => setDismissModalRule(null)}
         />
       )}
 
