@@ -772,6 +772,29 @@ export default function AlertRules() {
     setSyncingTenant(null);
   };
 
+  const handleSidebarAction = (rule: AlertRule) => {
+    setSelectedRule(null);
+    if (rule.action === 'Provide Data') {
+      setDataRequiredRule(rule);
+    } else if (rule.attention === 'Prerequisites Required') {
+      setContentHubRule(rule);
+    } else if (rule.action === 'Align Value') {
+      setValueMatrixModalRule(rule);
+    } else if (rule.action === 'Align Version') {
+      setVersionAlignmentModalRule(rule);
+    } else if (rule.action === 'Value & Distribute') {
+      setValueDistributeModalRule(rule);
+    } else if (rule.attention === 'Client Misalignment') {
+      setClientMisalignmentRule(rule);
+    } else if (rule.action === 'Enable') {
+      toast.success(`Enabled rule: ${rule.name}`);
+    } else if (rule.action === 'Disable') {
+      toast.success(`Disabled rule: ${rule.name}`);
+    } else {
+      toast.success(`${rule.action}: ${rule.name}`);
+    }
+  };
+
   const saveDismissals = (next: Record<string, RuleDismissals>) => {
     setAllDismissals(next);
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch {}
@@ -2596,30 +2619,12 @@ export default function AlertRules() {
                       </td>
                     )}
                     {visibleColumns.action && (
-                      <td className="px-4 py-3 bg-[#f8fdfe]" onClick={(e) => e.stopPropagation()}>
+                      <td className="px-4 py-3 bg-[#f8fdfe]">
                         <div className="flex items-center justify-center gap-2">
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-
-                              // Handle different action types
-                              if (rule.action === 'Provide Data') {
-                                setDataRequiredRule(rule);
-                              } else if (rule.attention === 'Prerequisites Required') {
-                                setContentHubRule(rule);
-                              } else if (rule.action === 'Align Value') {
-                                setValueMatrixModalRule(rule);
-                              } else if (rule.action === 'Align Version') {
-                                setVersionAlignmentModalRule(rule);
-                              } else if (rule.action === 'Value & Distribute') {
-                                setValueDistributeModalRule(rule);
-                              } else if (rule.attention === 'Client Misalignment') {
-                                setClientMisalignmentRule(rule);
-                              } else if (rule.action === 'Enable' || rule.action === 'Disable') {
-                                toast.success(`${rule.action}d rule: ${rule.name}`);
-                              } else {
-                                toast.success(`${rule.action}${rule.action === 'Align' || rule.action === 'Distribute' ? 'ed' : 'd'} rule: ${rule.name}`);
-                              }
+                              setSelectedRule(rule);
                             }}
                             className={`px-3 py-1 rounded-lg text-xs transition-colors ${
                               rule.action === 'Enable'
@@ -2793,6 +2798,7 @@ export default function AlertRules() {
         <AlertRuleSidebar
           rule={selectedRule}
           onClose={() => setSelectedRule(null)}
+          onActionTrigger={handleSidebarAction}
         />
       )}
 
