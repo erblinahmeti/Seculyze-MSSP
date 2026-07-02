@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import {
   X, AlertCircle, Upload, ClipboardList, CheckCircle,
   ChevronDown, ChevronUp, FileText, Loader2, Info, Table2,
-  Code2, Plus, Trash2, Users, Building2,
+  Code2, Plus, Trash2, Users, Building2, Globe, Link2, RotateCcw,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -262,27 +262,154 @@ function RequirementCard({
   );
 }
 
+// ─── sub-component: default values card ──────────────────────────────────────
+
+function DefaultValuesCard({
+  params,
+  values,
+  onChange,
+  tenantCount,
+  overriddenCount,
+}: {
+  params: QueryParam[];
+  values: Record<string, string[]>;
+  onChange: (paramId: string, newValues: string[]) => void;
+  tenantCount: number;
+  overriddenCount: number;
+}) {
+  const [expanded, setExpanded] = useState(true);
+
+  const addValue = (paramId: string) => {
+    const current = values[paramId] ?? [];
+    onChange(paramId, [...current, '']);
+  };
+
+  const updateValue = (paramId: string, index: number, val: string) => {
+    const current = [...(values[paramId] ?? [])];
+    current[index] = val;
+    onChange(paramId, current);
+  };
+
+  const removeValue = (paramId: string, index: number) => {
+    const current = [...(values[paramId] ?? [])];
+    current.splice(index, 1);
+    onChange(paramId, current);
+  };
+
+  const requiredFilled = params
+    .filter(p => p.required)
+    .every(p => (values[p.id] ?? []).filter(v => v.trim()).length > 0);
+
+  const linkedCount = tenantCount - overriddenCount;
+
+  return (
+    <div className={`rounded-xl border-2 overflow-hidden transition-all ${
+      requiredFilled ? 'border-[#2A96A8]/50' : 'border-[#e5f2f4]'
+    }`}>
+      <button
+        onClick={() => setExpanded(e => !e)}
+        className={`w-full px-4 py-3 flex items-center gap-3 text-left transition-colors ${
+          requiredFilled ? 'bg-[#e5f2f4]/60' : 'bg-[#f6f6f6]'
+        }`}
+      >
+        <Globe className={`w-4 h-4 shrink-0 ${requiredFilled ? 'text-[#2A96A8]' : 'text-[#6b828c]'}`} />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-medium text-[#092E3F]">Default Values</span>
+            {requiredFilled ? (
+              <span className="text-[10px] text-[#2A96A8] font-medium">
+                Applied to {linkedCount} tenant{linkedCount !== 1 ? 's' : ''}
+                {overriddenCount > 0 && ` · ${overriddenCount} custom`}
+              </span>
+            ) : (
+              <span className="text-[10px] text-amber-600 font-medium">Set to prefill all tenants</span>
+            )}
+          </div>
+          <p className="text-[10px] text-[#6b828c] mt-0.5">Individual tenants can override below</p>
+        </div>
+        {expanded
+          ? <ChevronUp className="w-4 h-4 text-[#6b828c] shrink-0" />
+          : <ChevronDown className="w-4 h-4 text-[#6b828c] shrink-0" />
+        }
+      </button>
+
+      {expanded && (
+        <div className="px-4 pb-4 pt-3 bg-white space-y-4">
+          {params.map(param => {
+            const currentValues = values[param.id] ?? [];
+            const filled = currentValues.filter(v => v.trim());
+            return (
+              <div key={param.id}>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <code className="text-[11px] font-mono bg-[#092E3F]/8 text-[#092E3F] px-1.5 py-0.5 rounded">
+                    {param.paramName}
+                  </code>
+                  {param.required
+                    ? <span className="text-[10px] text-amber-600 font-medium">Required</span>
+                    : <span className="text-[10px] text-[#6b828c]">Optional</span>
+                  }
+                  {filled.length > 0 && (
+                    <span className="text-[10px] text-[#2A96A8] font-medium">{filled.length} value{filled.length !== 1 ? 's' : ''}</span>
+                  )}
+                </div>
+                <p className="text-[10px] text-[#6b828c] mb-2">{param.description}</p>
+
+                <div className="space-y-1.5">
+                  {currentValues.map((val, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={val}
+                        onChange={e => updateValue(param.id, idx, e.target.value)}
+                        placeholder={param.example}
+                        className="flex-1 px-2.5 py-1.5 text-xs bg-[#f6f6f6] border border-[#e5f2f4] rounded-lg text-[#092E3F] placeholder:text-[#d6d6d6] focus:outline-none focus:border-[#2A96A8] transition-colors font-mono"
+                      />
+                      <button
+                        onClick={() => removeValue(param.id, idx)}
+                        className="p-1.5 text-[#6b828c] hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    onClick={() => addValue(param.id)}
+                    className="flex items-center gap-1.5 text-[11px] text-[#2A96A8] hover:text-[#092E3F] transition-colors py-0.5"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Add {currentValues.length === 0 ? 'value' : 'another'}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── sub-component: per-tenant query param editor ────────────────────────────
 
 function TenantParamCard({
   tenant,
   params,
   values,
-  touched,
+  isOverridden,
+  onReset,
   onChange,
 }: {
   tenant: string;
   params: QueryParam[];
   values: Record<string, string[]>;
-  touched: boolean;
+  isOverridden: boolean;
+  onReset: () => void;
   onChange: (paramId: string, newValues: string[]) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
 
   const requiredParams = params.filter(p => p.required);
   const isReady = requiredParams.every(p => (values[p.id] ?? []).filter(v => v.trim()).length > 0);
-  const isConfirmed = isReady && touched;
-  const isPrefilled = isReady && !touched;
   const totalValues = params.reduce((sum, p) => sum + (values[p.id] ?? []).filter(v => v.trim()).length, 0);
 
   const addValue = (paramId: string) => {
@@ -304,26 +431,32 @@ function TenantParamCard({
 
   return (
     <div className={`rounded-xl border-2 overflow-hidden transition-all ${
-      isConfirmed ? 'border-green-200' : isPrefilled ? 'border-amber-200' : 'border-[#e5f2f4]'
+      isReady && isOverridden ? 'border-green-200' :
+      isReady ? 'border-[#2A96A8]/30' :
+      'border-[#e5f2f4]'
     }`}>
       <button
         onClick={() => setExpanded(e => !e)}
         className={`w-full px-4 py-3 flex items-center gap-3 text-left transition-colors ${
-          isConfirmed ? 'bg-green-50/60' : isPrefilled ? 'bg-amber-50/60' : 'bg-[#f6f6f6]'
+          isReady && isOverridden ? 'bg-green-50/60' :
+          isReady ? 'bg-[#e5f2f4]/30' :
+          'bg-[#f6f6f6]'
         }`}
       >
-        {isConfirmed
+        {isReady && isOverridden
           ? <CheckCircle className="w-4 h-4 text-green-500 shrink-0" />
+          : isReady
+          ? <Link2 className="w-4 h-4 text-[#2A96A8] shrink-0" />
           : <Building2 className="w-4 h-4 text-[#6b828c] shrink-0" />
         }
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium text-[#092E3F]">{tenant}</span>
-            {isConfirmed
-              ? <span className="text-[10px] text-green-600 font-medium">{totalValues} value{totalValues !== 1 ? 's' : ''} set</span>
-              : isPrefilled
-              ? <span className="text-[10px] text-amber-600 font-medium">Pre-filled — review required</span>
-              : <span className="text-[10px] text-amber-600 font-medium">Needs configuration</span>
+            {isReady && isOverridden
+              ? <span className="text-[10px] text-green-600 font-medium">Custom · {totalValues} value{totalValues !== 1 ? 's' : ''}</span>
+              : isReady
+              ? <span className="text-[10px] text-[#2A96A8] font-medium">Using defaults</span>
+              : <span className="text-[10px] text-amber-600 font-medium">Awaiting default values</span>
             }
           </div>
           {!expanded && isReady && (
@@ -332,7 +465,6 @@ function TenantParamCard({
                 const vals = (values[p.id] ?? []).filter(v => v.trim());
                 return vals.length > 0 ? `${p.paramName}: ${vals.join(', ')}` : null;
               }).filter(Boolean).join(' · ')}
-              {isPrefilled && <span className="text-amber-500 ml-1">· click to verify</span>}
             </p>
           )}
         </div>
@@ -344,6 +476,27 @@ function TenantParamCard({
 
       {expanded && (
         <div className="px-4 pb-4 pt-3 bg-white space-y-4">
+          {/* Override / linked status bar */}
+          <div className="flex items-center justify-between">
+            {isOverridden ? (
+              <span className="text-[11px] text-green-600 font-medium flex items-center gap-1.5">
+                <CheckCircle className="w-3 h-3" /> Custom values for this tenant
+              </span>
+            ) : (
+              <span className="text-[11px] text-[#2A96A8] flex items-center gap-1.5">
+                <Link2 className="w-3 h-3" /> Linked to default values — edit below to customize
+              </span>
+            )}
+            {isOverridden && (
+              <button
+                onClick={onReset}
+                className="text-[11px] text-[#6b828c] hover:text-amber-600 transition-colors flex items-center gap-1"
+              >
+                <RotateCcw className="w-3 h-3" /> Reset to defaults
+              </button>
+            )}
+          </div>
+
           {params.map(param => {
             const currentValues = values[param.id] ?? [];
             const filled = currentValues.filter(v => v.trim());
@@ -359,7 +512,9 @@ function TenantParamCard({
                       : <span className="text-[10px] text-[#6b828c]">Optional</span>
                     }
                     {filled.length > 0 && (
-                      <span className={`text-[10px] font-medium ${touched ? 'text-green-600' : 'text-amber-600'}`}>{filled.length} value{filled.length !== 1 ? 's' : ''}</span>
+                      <span className={`text-[10px] font-medium ${isOverridden ? 'text-green-600' : 'text-[#2A96A8]'}`}>
+                        {filled.length} value{filled.length !== 1 ? 's' : ''}
+                      </span>
                     )}
                   </div>
                 </div>
@@ -428,7 +583,6 @@ function KqlPreview({ query, params, tenantValues, selectedTenant }: {
       }, query)
     : query;
 
-  // Simple highlight: mark let lines
   const lines = interpolated.split('\n');
 
   return (
@@ -484,15 +638,23 @@ export default function DataRequiredSidebar({ rule, onClose, onEnabled }: DataRe
     )
   );
 
-  // Per-tenant query param state: tenantParamValues[tenant][paramId] = string[]
+  // Global default values for all tenants (paramId → string[]) — start empty,
+  // the user must set them; examples are shown only as input placeholders
+  const [defaultParamValues, setDefaultParamValues] = useState<Record<string, string[]>>(
+    Object.fromEntries(qParams.map(p => [p.id, ['']]))
+  );
+
+  // Per-tenant values: start empty, prefilled as the user types default values
   const [tenantParamValues, setTenantParamValues] = useState<TenantParamValues>(
     Object.fromEntries(tenants.map(t => [
       t,
-      Object.fromEntries(qParams.map(p => [p.id, p.example ? [p.example] : []]))
+      Object.fromEntries(qParams.map(p => [p.id, ['']]))
     ]))
   );
 
-  const [touchedTenants, setTouchedTenants] = useState<Set<string>>(new Set());
+  // Tenants that have been manually customised (won't receive default propagation)
+  const [overriddenTenants, setOverriddenTenants] = useState<Set<string>>(new Set());
+
   const [previewTenant, setPreviewTenant] = useState<string | null>(tenants[0] ?? null);
   const [deploying, setDeploying] = useState(false);
   const [deployed, setDeployed] = useState(false);
@@ -502,26 +664,54 @@ export default function DataRequiredSidebar({ rule, onClose, onEnabled }: DataRe
 
   const requiredQParams = qParams.filter(p => p.required);
   const tenantsReady = tenants.filter(t =>
-    touchedTenants.has(t) &&
     requiredQParams.every(p => (tenantParamValues[t]?.[p.id] ?? []).filter(v => v.trim()).length > 0)
   ).length;
   const allTenantsReady = tenants.length === 0 || tenantsReady === tenants.length;
 
   const allReady = allWatchlistsReady && (hasQueryParams ? allTenantsReady : true);
 
-  const totalSteps = reqs.length + (hasQueryParams ? tenants.length : 0);
-  const completedSteps = readyWatchlists + (hasQueryParams ? tenantsReady : 0);
+  const totalSteps = reqs.length + (hasQueryParams ? 1 : 0);
+  const completedSteps = readyWatchlists + (hasQueryParams && allTenantsReady ? 1 : 0);
 
   const patchReq = (id: string, patch: Partial<ReqState>) => {
     setReqStates(prev => ({ ...prev, [id]: { ...prev[id], ...patch } }));
   };
 
+  // Update global defaults and propagate to non-overridden tenants
+  const patchDefault = (paramId: string, values: string[]) => {
+    setDefaultParamValues(prev => ({ ...prev, [paramId]: values }));
+    setTenantParamValues(prev => {
+      const updated = { ...prev };
+      for (const tenant of tenants) {
+        if (!overriddenTenants.has(tenant)) {
+          updated[tenant] = { ...updated[tenant], [paramId]: values };
+        }
+      }
+      return updated;
+    });
+  };
+
+  // Edit a specific tenant — marks it as overridden (won't receive future default propagation)
   const patchTenantParam = (tenant: string, paramId: string, values: string[]) => {
     setTenantParamValues(prev => ({
       ...prev,
       [tenant]: { ...prev[tenant], [paramId]: values },
     }));
-    setTouchedTenants(prev => new Set(prev).add(tenant));
+    setOverriddenTenants(prev => new Set(prev).add(tenant));
+    setPreviewTenant(tenant);
+  };
+
+  // Reset a tenant back to current defaults
+  const resetTenant = (tenant: string) => {
+    setTenantParamValues(prev => ({
+      ...prev,
+      [tenant]: { ...defaultParamValues },
+    }));
+    setOverriddenTenants(prev => {
+      const next = new Set(prev);
+      next.delete(tenant);
+      return next;
+    });
   };
 
   const handleDeploy = async () => {
@@ -585,7 +775,7 @@ export default function DataRequiredSidebar({ rule, onClose, onEnabled }: DataRe
                   <p className="text-sm text-[#092E3F] font-medium mb-1">Customer-specific data required</p>
                   <p className="text-xs text-[#092E3F]/70">
                     {hasQueryParams
-                      ? 'This rule contains query parameters that must be configured per tenant before deployment. Each tenant can have different values — e.g. different VIP email lists.'
+                      ? 'Set default values below — they prefill all tenants. Open any tenant to customise individual values.'
                       : 'This rule references Sentinel watchlists that must be populated with your organisation\'s data before deployment.'
                     }
                   </p>
@@ -630,10 +820,10 @@ export default function DataRequiredSidebar({ rule, onClose, onEnabled }: DataRe
                 <div className="flex items-center justify-between">
                   <p className="text-[11px] font-semibold text-[#092E3F] uppercase tracking-wide flex items-center gap-2">
                     <Users className="w-3.5 h-3.5 text-[#2A96A8]" />
-                    Per-Tenant Query Parameters
+                    Query Parameters
                   </p>
                   <span className="text-[10px] text-[#6b828c]">
-                    {tenantsReady}/{tenants.length} tenants configured
+                    {tenantsReady}/{tenants.length} tenants ready
                   </span>
                 </div>
 
@@ -659,29 +849,36 @@ export default function DataRequiredSidebar({ rule, onClose, onEnabled }: DataRe
                   ))}
                 </div>
 
+                {/* Default values card */}
+                <DefaultValuesCard
+                  params={qParams}
+                  values={defaultParamValues}
+                  onChange={patchDefault}
+                  tenantCount={tenants.length}
+                  overriddenCount={overriddenTenants.size}
+                />
+
                 {/* KQL preview */}
-                {rule.kqlQuery && (
+                {rule.kqlQuery && tenants.length > 0 && (
                   <div className="space-y-2">
-                    {tenants.length > 0 && (
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] text-[#6b828c]">Preview for:</span>
-                        <div className="flex gap-1 flex-wrap">
-                          {tenants.map(t => (
-                            <button
-                              key={t}
-                              onClick={() => setPreviewTenant(t)}
-                              className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${
-                                previewTenant === t
-                                  ? 'bg-[#092E3F] text-white'
-                                  : 'bg-[#e5f2f4] text-[#6b828c] hover:bg-[#092E3F]/10'
-                              }`}
-                            >
-                              {t}
-                            </button>
-                          ))}
-                        </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-[#6b828c]">Preview for:</span>
+                      <div className="flex gap-1 flex-wrap">
+                        {tenants.map(t => (
+                          <button
+                            key={t}
+                            onClick={() => setPreviewTenant(t)}
+                            className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                              previewTenant === t
+                                ? 'bg-[#092E3F] text-white'
+                                : 'bg-[#e5f2f4] text-[#6b828c] hover:bg-[#092E3F]/10'
+                            }`}
+                          >
+                            {t}
+                          </button>
+                        ))}
                       </div>
-                    )}
+                    </div>
                     <KqlPreview
                       query={rule.kqlQuery}
                       params={qParams}
@@ -693,17 +890,25 @@ export default function DataRequiredSidebar({ rule, onClose, onEnabled }: DataRe
 
                 {/* Per-tenant cards */}
                 <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] text-[#6b828c] font-medium uppercase tracking-wide">
+                      Per-tenant overrides
+                    </p>
+                    {overriddenTenants.size > 0 && (
+                      <span className="text-[10px] text-[#6b828c]">
+                        {overriddenTenants.size} custom · {tenants.length - overriddenTenants.size} using defaults
+                      </span>
+                    )}
+                  </div>
                   {tenants.map(tenant => (
                     <TenantParamCard
                       key={tenant}
                       tenant={tenant}
                       params={qParams}
                       values={tenantParamValues[tenant] ?? {}}
-                      touched={touchedTenants.has(tenant)}
-                      onChange={(paramId, vals) => {
-                        patchTenantParam(tenant, paramId, vals);
-                        setPreviewTenant(tenant);
-                      }}
+                      isOverridden={overriddenTenants.has(tenant)}
+                      onReset={() => resetTenant(tenant)}
+                      onChange={(paramId, vals) => patchTenantParam(tenant, paramId, vals)}
                     />
                   ))}
                 </div>
@@ -741,7 +946,7 @@ export default function DataRequiredSidebar({ rule, onClose, onEnabled }: DataRe
                     </p>
                     <p className="text-[10px] text-[#6b828c] mt-0.5">
                       {allTenantsReady
-                        ? `All ${tenants.length} tenants configured`
+                        ? `All ${tenants.length} tenants configured · ${overriddenTenants.size} custom, ${tenants.length - overriddenTenants.size} using defaults`
                         : `${tenantsReady}/${tenants.length} tenants ready`}
                     </p>
                   </div>

@@ -306,10 +306,11 @@ export default function DataRequiredSidebarV2({ rule, onClose, onEnabled }: Data
   const query = rule.kqlQuery ?? '';
 
   // tenantValues[tenant][paramId] = string[]
+  // Start empty — the user must provide values; examples are shown as placeholders only
   const [tenantValues, setTenantValues] = useState<Record<string, Record<string, string[]>>>(
     Object.fromEntries(tenants.map(t => [
       t,
-      Object.fromEntries(qParams.map(p => [p.id, p.example ? [p.example] : []]))
+      Object.fromEntries(qParams.map(p => [p.id, []]))
     ]))
   );
   const [touchedTenants, setTouchedTenants] = useState<Set<string>>(new Set());

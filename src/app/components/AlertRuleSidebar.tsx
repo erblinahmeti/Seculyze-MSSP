@@ -23,8 +23,8 @@ interface AlertRule {
   state: 'Enabled' | 'Disabled';
   clientsApplied: number;
   clientNames?: string[];
-  attention: 'High Value Alert' | 'Low Value Alert' | 'Medium Value Alert' | 'Version Misalignment' | 'Value Misalignment' | 'Disable Aligned' | 'New Rule' | 'Client Misalignment' | 'Prerequisites Required' | 'Data Required';
-  action: 'Enable' | 'Disable' | 'Align' | 'Distribute' | 'Align Version' | 'Align Value' | 'Align Clients' | 'Value & Distribute' | 'Install & Enable' | 'Provide Data';
+  attention: 'High Value Alert' | 'Low Value Alert' | 'Medium Value Alert' | 'Not Up to Date' | 'Version Misalignment' | 'Value Misalignment' | 'Disable Aligned' | 'New Rule' | 'Client Misalignment' | 'Prerequisites Required' | 'Data Required';
+  action: 'Enable' | 'Disable' | 'Update' | 'Align' | 'Distribute' | 'Align Version' | 'Align Value' | 'Align Clients' | 'Value & Distribute' | 'Install & Enable' | 'Provide Data';
   valueExplanation?: string;
   kqlQuery?: string;
 }

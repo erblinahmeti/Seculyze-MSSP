@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, GitBranch, AlertCircle, ArrowRight, Clock, Users } from 'lucide-react';
+import { X, GitBranch, AlertCircle, Users, ChevronDown, ChevronUp } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 
 interface AlertRule {
@@ -21,6 +21,7 @@ interface VersionInfo {
 
 interface VersionAlignmentModalProps {
   rule: AlertRule;
+  baselineTenant?: string;
   onClose: () => void;
   onAlign?: (selectedVersion: string) => void;
 }
@@ -67,14 +68,21 @@ const newest: VersionInfo = {
 
 export default function VersionAlignmentModal({
   rule,
+  baselineTenant,
   onClose,
   onAlign,
 }: VersionAlignmentModalProps) {
-  const [selected, setSelected] = useState<'previous' | 'newest'>('newest');
+  // The baseline tenant's version is the recommended target — preselect it
+  const baselineSide: 'previous' | 'newest' = baselineTenant && previous.clientNames.includes(baselineTenant)
+    ? 'previous'
+    : 'newest';
+  const [selected, setSelected] = useState<'previous' | 'newest'>(baselineSide);
+  const [changelogOpen, setChangelogOpen] = useState(false);
 
   const selectedVersion = selected === 'newest' ? newest : previous;
   const otherVersion = selected === 'newest' ? previous : newest;
   const clientsToUpdate = otherVersion.clientsUsing;
+  const total = previous.clientsUsing + newest.clientsUsing;
 
   const handleAlign = () => {
     onAlign?.(selectedVersion.version);
@@ -82,6 +90,76 @@ export default function VersionAlignmentModal({
       `Aligned ${clientsToUpdate} client${clientsToUpdate !== 1 ? 's' : ''} to version ${selectedVersion.version}`
     );
     onClose();
+  };
+
+  const formatDate = (d: string) =>
+    new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+
+  const VersionColumn = ({ info, side }: { info: VersionInfo; side: 'previous' | 'newest' }) => {
+    const isSelected = selected === side;
+    return (
+      <div
+        onClick={() => setSelected(side)}
+        className={`flex flex-col rounded-xl border-2 overflow-hidden cursor-pointer transition-all ${
+          isSelected ? 'border-[#2A96A8]' : 'border-[#e5f2f4] hover:border-[#2A96A8]/40'
+        }`}
+      >
+        {/* Column header — selectable */}
+        <div className={`px-3 py-3 shrink-0 ${isSelected ? 'bg-[#e5f2f4]' : 'bg-[#f6f6f6]'}`}>
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-1.5">
+              <GitBranch className={`w-3.5 h-3.5 shrink-0 ${isSelected ? 'text-[#2A96A8]' : 'text-[#6b828c]'}`} />
+              <span className="text-sm font-bold text-[#092E3F]">v{info.version}</span>
+            </div>
+            <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
+              isSelected ? 'border-[#2A96A8] bg-[#2A96A8]' : 'border-[#d6d6d6] bg-white'
+            }`}>
+              {isSelected && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1 mb-1.5 flex-wrap">
+            {info.isNewest ? (
+              <span className="inline-block px-1.5 py-0.5 bg-green-100 text-green-700 text-[10px] rounded font-medium">
+                Latest
+              </span>
+            ) : (
+              <span className="inline-block px-1.5 py-0.5 bg-[#d6d6d6] text-[#6b828c] text-[10px] rounded font-medium">
+                Previous
+              </span>
+            )}
+            {baselineTenant && info.clientNames.includes(baselineTenant) && (
+              <span className="inline-block px-1.5 py-0.5 bg-[#092E3F] text-white text-[10px] rounded font-medium">
+                Baseline
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-1 text-[10px] text-[#6b828c]">
+            <Users className="w-3 h-3 shrink-0" />
+            <span>{info.clientsUsing} tenant{info.clientsUsing !== 1 ? 's' : ''}</span>
+          </div>
+          <p className="text-[10px] text-[#6b828c] mt-0.5">{formatDate(info.releaseDate)}</p>
+        </div>
+
+        {/* Scrollable tenant list */}
+        <div className="flex-1 overflow-y-auto bg-white divide-y divide-[#f4f4f4]" style={{ maxHeight: 260 }}>
+          {info.clientNames.length === 0 ? (
+            <p className="px-3 py-3 text-[11px] text-[#6b828c] italic">No tenants</p>
+          ) : (
+            info.clientNames.map(name => (
+              <div key={name} className="flex items-center gap-2 px-3 py-2">
+                <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${info.isNewest ? 'bg-[#2A96A8]' : 'bg-[#d6d6d6]'}`} />
+                <span className="text-xs text-[#092E3F] truncate">{name}</span>
+                {name === baselineTenant && (
+                  <span className="px-1.5 py-0.5 rounded-[4px] bg-[#092E3F] text-white text-[9px] font-semibold uppercase tracking-wide shrink-0">Baseline</span>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -107,178 +185,71 @@ export default function VersionAlignmentModal({
 
         {/* Scrollable content */}
         <div className="flex-1 overflow-y-auto">
-          <div className="px-6 py-5 space-y-5">
+          <div className="px-6 py-5 space-y-4">
 
-            {/* Warning banner */}
+            {/* Warning */}
             <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
               <div className="flex items-start gap-3">
                 <AlertCircle className="w-4 h-4 text-orange-600 shrink-0 mt-0.5" />
                 <div>
-                  <p className="text-sm text-[#092E3F] font-medium mb-1">Version Misalignment Detected</p>
+                  <p className="text-sm text-[#092E3F] font-medium mb-0.5">Version Misalignment Detected</p>
                   <p className="text-xs text-[#092E3F]/70">
-                    Clients are split across two versions. Select which version to align all {previous.clientsUsing + newest.clientsUsing} clients to.
+                    {total} tenants are split across two versions.
+                    {baselineTenant
+                      ? ` We recommend v${baselineSide === 'previous' ? previous.version : newest.version} — your baseline tenant (${baselineTenant}) runs it.`
+                      : ' Select a column to choose the target version, then confirm.'}
                   </p>
                 </div>
               </div>
             </div>
 
-            {/* Version picker label */}
-            <p className="text-xs font-light text-[#092E3F] uppercase">Select version to align to</p>
+            {/* Label */}
+            <p className="text-[11px] font-semibold text-[#092E3F] uppercase tracking-wide">
+              Select target version — click a column to pick
+            </p>
 
-            {/* Two version cards */}
-            <div className="space-y-3">
-              {/* Previous version */}
-              <button
-                onClick={() => setSelected('previous')}
-                className={`w-full text-left rounded-xl border-2 transition-all overflow-hidden ${
-                  selected === 'previous'
-                    ? 'border-[#2A96A8]'
-                    : 'border-[#e5f2f4] hover:border-[#2A96A8]/40'
-                }`}
-              >
-                {/* Card header */}
-                <div className={`px-4 py-3 flex items-center justify-between ${
-                  selected === 'previous' ? 'bg-[#e5f2f4]' : 'bg-[#f6f6f6]'
-                }`}>
-                  <div className="flex items-center gap-2">
-                    <GitBranch className="w-4 h-4 text-[#6b828c]" />
-                    <span className="text-sm font-semibold text-[#092E3F]">v{previous.version}</span>
-                    <span className="px-2 py-0.5 bg-[#d6d6d6] text-[#6b828c] text-[10px] rounded-full font-medium">
-                      Previous
-                    </span>
-                  </div>
-                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
-                    selected === 'previous' ? 'border-[#2A96A8] bg-[#2A96A8]' : 'border-[#d6d6d6] bg-white'
-                  }`}>
-                    {selected === 'previous' && (
-                      <div className="w-2 h-2 bg-white rounded-full" />
-                    )}
-                  </div>
-                </div>
-
-                {/* Card body */}
-                <div className="px-4 py-3 bg-white space-y-3">
-                  <div className="flex items-center gap-4 text-xs text-[#6b828c]">
-                    <div className="flex items-center gap-1">
-                      <Clock className="w-3.5 h-3.5" />
-                      <span>{new Date(previous.releaseDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Users className="w-3.5 h-3.5" />
-                      <span>{previous.clientsUsing} client{previous.clientsUsing !== 1 ? 's' : ''}</span>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap gap-1.5">
-                    {previous.clientNames.map((name) => (
-                      <span key={name} className="px-2 py-0.5 bg-[#f6f6f6] text-[#092E3F] text-[10px] rounded-full border border-[#e5f2f4]">
-                        {name}
-                      </span>
-                    ))}
-                  </div>
-
-                  <div>
-                    <p className="text-[10px] font-medium text-[#6b828c] uppercase mb-1.5">Changes</p>
-                    <ul className="space-y-1">
-                      {previous.changes.map((change, i) => (
-                        <li key={i} className="text-xs text-[#092E3F]/70 flex items-start gap-2">
-                          <span className="text-[#6b828c] mt-0.5 shrink-0">•</span>
-                          <span>{change}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  <div className="bg-gray-900 rounded-lg p-3 overflow-x-auto">
-                    <pre className="text-[10px] text-green-400 font-mono leading-relaxed">{previous.kql}</pre>
-                  </div>
-                </div>
-              </button>
-
-              {/* Arrow between */}
-              <div className="flex items-center justify-center gap-3">
-                <div className="h-px flex-1 bg-[#e5f2f4]" />
-                <div className="w-7 h-7 rounded-full bg-[#e5f2f4] flex items-center justify-center shrink-0">
-                  <ArrowRight className="w-3.5 h-3.5 text-[#2A96A8]" />
-                </div>
-                <div className="h-px flex-1 bg-[#e5f2f4]" />
-              </div>
-
-              {/* Newest version */}
-              <button
-                onClick={() => setSelected('newest')}
-                className={`w-full text-left rounded-xl border-2 transition-all overflow-hidden ${
-                  selected === 'newest'
-                    ? 'border-[#2A96A8]'
-                    : 'border-[#e5f2f4] hover:border-[#2A96A8]/40'
-                }`}
-              >
-                {/* Card header */}
-                <div className={`px-4 py-3 flex items-center justify-between ${
-                  selected === 'newest' ? 'bg-[#e5f2f4]' : 'bg-[#f6f6f6]'
-                }`}>
-                  <div className="flex items-center gap-2">
-                    <GitBranch className="w-4 h-4 text-[#2A96A8]" />
-                    <span className="text-sm font-semibold text-[#092E3F]">v{newest.version}</span>
-                    <span className="px-2 py-0.5 bg-green-100 text-green-700 text-[10px] rounded-full font-medium">
-                      Newest
-                    </span>
-                  </div>
-                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
-                    selected === 'newest' ? 'border-[#2A96A8] bg-[#2A96A8]' : 'border-[#d6d6d6] bg-white'
-                  }`}>
-                    {selected === 'newest' && (
-                      <div className="w-2 h-2 bg-white rounded-full" />
-                    )}
-                  </div>
-                </div>
-
-                {/* Card body */}
-                <div className="px-4 py-3 bg-white space-y-3">
-                  <div className="flex items-center gap-4 text-xs text-[#6b828c]">
-                    <div className="flex items-center gap-1">
-                      <Clock className="w-3.5 h-3.5" />
-                      <span>{new Date(newest.releaseDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Users className="w-3.5 h-3.5" />
-                      <span>{newest.clientsUsing} client{newest.clientsUsing !== 1 ? 's' : ''}</span>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap gap-1.5">
-                    {newest.clientNames.map((name) => (
-                      <span key={name} className="px-2 py-0.5 bg-[#f6f6f6] text-[#092E3F] text-[10px] rounded-full border border-[#e5f2f4]">
-                        {name}
-                      </span>
-                    ))}
-                  </div>
-
-                  <div>
-                    <p className="text-[10px] font-medium text-[#6b828c] uppercase mb-1.5">Changes</p>
-                    <ul className="space-y-1">
-                      {newest.changes.map((change, i) => (
-                        <li key={i} className="text-xs text-[#092E3F]/70 flex items-start gap-2">
-                          <span className="text-[#2A96A8] mt-0.5 shrink-0">•</span>
-                          <span>{change}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  <div className="bg-gray-900 rounded-lg p-3 overflow-x-auto">
-                    <pre className="text-[10px] text-green-400 font-mono leading-relaxed">{newest.kql}</pre>
-                  </div>
-                </div>
-              </button>
+            {/* Two-column version split */}
+            <div className="grid grid-cols-2 gap-3 items-start">
+              <VersionColumn info={previous} side="previous" />
+              <VersionColumn info={newest} side="newest" />
             </div>
+
+            {/* Changelog toggle */}
+            <button
+              onClick={() => setChangelogOpen(o => !o)}
+              className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl bg-[#f6f6f6] border border-[#e5f2f4] hover:bg-[#eef7f8] transition-colors"
+            >
+              <span className="text-[11px] font-medium text-[#092E3F]">
+                What changed in v{selectedVersion.version}?
+              </span>
+              {changelogOpen
+                ? <ChevronUp className="w-3.5 h-3.5 text-[#6b828c]" />
+                : <ChevronDown className="w-3.5 h-3.5 text-[#6b828c]" />
+              }
+            </button>
+
+            {changelogOpen && (
+              <div className="space-y-3 -mt-1">
+                <ul className="space-y-1.5 px-1">
+                  {selectedVersion.changes.map((change, i) => (
+                    <li key={i} className="text-xs text-[#092E3F]/70 flex items-start gap-2">
+                      <span className="text-[#2A96A8] mt-0.5 shrink-0">•</span>
+                      <span>{change}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="bg-gray-900 rounded-lg p-3 overflow-x-auto">
+                  <pre className="text-[10px] text-green-400 font-mono leading-relaxed">{selectedVersion.kql}</pre>
+                </div>
+              </div>
+            )}
 
             {/* Impact summary */}
             <div className="bg-[#e5f2f4] rounded-xl p-4">
               <p className="text-xs text-[#092E3F]">
                 Aligning to <span className="font-semibold">v{selectedVersion.version}</span> will update{' '}
-                <span className="font-semibold">{clientsToUpdate} client{clientsToUpdate !== 1 ? 's' : ''}</span>{' '}
-                currently on v{otherVersion.version}. All {previous.clientsUsing + newest.clientsUsing} clients will then run the same version.
+                <span className="font-semibold">{clientsToUpdate} tenant{clientsToUpdate !== 1 ? 's' : ''}</span>{' '}
+                currently on v{otherVersion.version}. All {total} tenants will then run the same version.
               </p>
             </div>
 
@@ -287,18 +258,18 @@ export default function VersionAlignmentModal({
 
         {/* Footer */}
         <div className="border-t border-[#e5f2f4] px-6 py-4 bg-white shrink-0">
-          <div className="flex items-center justify-end gap-3">
+          <div className="flex items-center gap-3">
             <button
               onClick={onClose}
-              className="px-4 py-2 bg-white text-[#6b828c] rounded text-sm hover:text-[#092E3F] transition-colors"
+              className="px-4 py-2 text-[#6b828c] text-sm hover:text-[#092E3F] transition-colors"
             >
               Cancel
             </button>
             <button
               onClick={handleAlign}
-              className="px-6 py-2 bg-[#092e3f] text-white rounded text-sm hover:bg-[#092e3f]/90 transition-colors"
+              className="flex-1 py-2 bg-[#092e3f] text-white rounded-xl text-sm hover:bg-[#092e3f]/90 transition-colors font-medium"
             >
-              Align to v{selectedVersion.version}
+              Align all to v{selectedVersion.version}
             </button>
           </div>
         </div>

@@ -26,6 +26,7 @@ interface Client {
 
 interface ValueMatrixModalProps {
   rule: AlertRule;
+  baselineTenant?: string;
   onClose: () => void;
   onApply?: (value: 'High' | 'Medium' | 'Low', explanation: string) => void;
   showKQL?: boolean;
@@ -78,18 +79,21 @@ const mockKQL = `SecurityEvent
 
 export default function ValueMatrixModal({
   rule,
+  baselineTenant,
   onClose,
   onApply,
   showKQL = false
 }: ValueMatrixModalProps) {
-  // In misalignment mode, initialize at the recommended (target) value so the matrix shows where we're aligning TO
-  const initialValue = showKQL && rule.recommendedValue ? rule.recommendedValue : rule.value;
-  const [position, setPosition] = useState<MatrixPosition>(getPositionFromValue(initialValue));
+  // In misalignment mode the baseline tenant's value (rule.value) is the source of truth —
+  // initialize the matrix there, since we recommend restoring the baseline
+  const [position, setPosition] = useState<MatrixPosition>(getPositionFromValue(rule.value));
   const [explanation, setExplanation] = useState('');
 
   const currentValue = getValueFromPosition(position);
 
-  const sourceClient = showKQL ? mockClients.find(c => c.id === rule.sourceTenantId) || mockClients[0] : null;
+  // The tenant that deviated from the baseline, and the value they changed to
+  const deviatingClient = showKQL ? mockClients.find(c => c.id === rule.sourceTenantId) || mockClients[0] : null;
+  const deviatingValue = rule.recommendedValue;
   const targetClients = showKQL ? mockClients.filter(c => c.id !== rule.sourceTenantId) : [];
   const clientsWithLogSource = targetClients.filter(c => c.hasLogSource);
   const clientsWithoutLogSource = targetClients.filter(c => !c.hasLogSource);
@@ -100,8 +104,8 @@ export default function ValueMatrixModal({
       return;
     }
     onApply?.(currentValue, explanation);
-    if (showKQL && sourceClient) {
-      toast.success(`Value alignment from ${sourceClient.name} applied to ${targetClients.length} customers`);
+    if (showKQL && deviatingClient) {
+      toast.success(`${deviatingClient.name} aligned back to ${currentValue}${baselineTenant ? ` — matching baseline (${baselineTenant})` : ''}`);
     } else {
       toast.success(`Value updated to ${currentValue} across all customers`);
     }
@@ -155,27 +159,29 @@ export default function ValueMatrixModal({
           <div className="px-6 py-5 space-y-5">
 
             {/* Value Misalignment Info */}
-            {showKQL && sourceClient && (
+            {showKQL && deviatingClient && (
               <div className="space-y-3">
-                {/* From → To indicator */}
-                {rule.recommendedValue && (
+                {/* Deviation → Baseline indicator */}
+                {deviatingValue && (
                   <div className="flex items-center gap-3 p-4 bg-[#092E3F] rounded-xl">
                     <div className="flex-1 text-center">
-                      <p className="text-[10px] text-white/50 uppercase tracking-wide mb-1">Current value</p>
-                      <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold ${
-                        rule.value === 'High' ? 'bg-[#76ba3b]/20 text-[#76ba3b]' :
-                        rule.value === 'Medium' ? 'bg-yellow-400/20 text-yellow-300' :
+                      <p className="text-[10px] text-white/50 uppercase tracking-wide mb-1">{deviatingClient.name} changed to</p>
+                      <span className={`inline-block px-3 py-1 rounded-[4px] text-xs font-bold ${
+                        deviatingValue === 'High' ? 'bg-[#76ba3b]/20 text-[#76ba3b]' :
+                        deviatingValue === 'Medium' ? 'bg-yellow-400/20 text-yellow-300' :
                         'bg-gray-400/20 text-gray-300'
-                      }`}>{rule.value}</span>
+                      }`}>{deviatingValue}</span>
                     </div>
                     <div className="text-white/40 text-lg">→</div>
                     <div className="flex-1 text-center">
-                      <p className="text-[10px] text-white/50 uppercase tracking-wide mb-1">{sourceClient.name} recommends</p>
-                      <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold ring-2 ${
-                        rule.recommendedValue === 'High' ? 'bg-[#76ba3b]/30 text-[#76ba3b] ring-[#76ba3b]/50' :
-                        rule.recommendedValue === 'Medium' ? 'bg-yellow-400/30 text-yellow-300 ring-yellow-400/50' :
+                      <p className="text-[10px] text-white/50 uppercase tracking-wide mb-1">
+                        Baseline{baselineTenant ? ` (${baselineTenant})` : ''} has
+                      </p>
+                      <span className={`inline-block px-3 py-1 rounded-[4px] text-xs font-bold ring-2 ${
+                        rule.value === 'High' ? 'bg-[#76ba3b]/30 text-[#76ba3b] ring-[#76ba3b]/50' :
+                        rule.value === 'Medium' ? 'bg-yellow-400/30 text-yellow-300 ring-yellow-400/50' :
                         'bg-gray-400/30 text-gray-300 ring-gray-400/50'
-                      }`}>{rule.recommendedValue}</span>
+                      }`}>{rule.value}</span>
                     </div>
                   </div>
                 )}
@@ -184,41 +190,60 @@ export default function ValueMatrixModal({
                   <div className="flex items-start gap-3">
                     <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
                     <div>
-                      <p className="text-sm text-[#092E3F] font-medium mb-1">Source of Change</p>
+                      <p className="text-sm text-[#092E3F] font-medium mb-1">Deviation from Baseline</p>
                       <p className="text-xs text-blue-800">
-                        <span className="font-bold">{sourceClient.name}</span> changed their value recommendation
-                        {rule.recommendedValue ? <> from <span className="font-bold">{rule.value}</span> to <span className="font-bold">{rule.recommendedValue}</span></> : ''}.
-                        Confirm below to align all other customers to this value.
+                        <span className="font-bold">{deviatingClient.name}</span> changed this rule's value
+                        {deviatingValue ? <> from <span className="font-bold">{rule.value}</span> to <span className="font-bold">{deviatingValue}</span></> : ''}.
+                        Your baseline tenant{baselineTenant ? <> <span className="font-bold">{baselineTenant}</span></> : ''} has it at <span className="font-bold">{rule.value}</span> —
+                        we recommend restoring the baseline value. Confirm below to align.
                       </p>
                     </div>
                   </div>
                 </div>
 
-                <div className="bg-[#e5f2f4] rounded-xl p-4">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Users className="w-4 h-4 text-[#2A96A8]" />
-                    <h3 className="text-sm font-medium text-[#092E3F]">Alignment Summary</h3>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-white rounded-lg p-3">
-                      <div className="flex items-center gap-2 mb-1">
-                        <CheckCircle className="w-4 h-4 text-green-600" />
-                        <span className="text-xs text-gray-600">With Log Sources</span>
-                      </div>
-                      <p className="text-lg font-bold text-[#092E3F]">{clientsWithLogSource.length}</p>
-                      <p className="text-xs text-gray-600 mt-1">Will apply immediately</p>
-                    </div>
-                    {clientsWithoutLogSource.length > 0 && (
-                      <div className="bg-white rounded-lg p-3">
-                        <div className="flex items-center gap-2 mb-1">
-                          <AlertTriangle className="w-4 h-4 text-orange-600" />
-                          <span className="text-xs text-gray-600">Without Log Sources</span>
+              </div>
+            )}
+
+            {/* Current value distribution — misalignment overview */}
+            {showKQL && (
+              <div className="space-y-2">
+                <p className="text-[11px] font-semibold text-[#092E3F] uppercase tracking-wide">
+                  Current value distribution
+                </p>
+                <div className="grid grid-cols-3 gap-2">
+                  {(['High', 'Medium', 'Low'] as const).map(v => {
+                    // Everyone follows the baseline value except the tenant that deviated
+                    const forValue = mockClients.filter(c => {
+                      const current = c.id === rule.sourceTenantId ? (deviatingValue ?? rule.value) : rule.value;
+                      return current === v;
+                    });
+                    const colors = {
+                      High:   { border: 'border-[#76ba3b]/40', header: 'bg-[#76ba3b]/10', label: 'text-[#4a8522] font-bold' },
+                      Medium: { border: 'border-amber-200',    header: 'bg-amber-50',      label: 'text-amber-700 font-bold' },
+                      Low:    { border: 'border-gray-200',     header: 'bg-gray-50',       label: 'text-gray-600 font-bold' },
+                    }[v];
+                    return (
+                      <div key={v} className={`rounded-xl border-2 overflow-hidden ${colors.border}`}>
+                        <div className={`px-2.5 py-2 flex items-center justify-between ${colors.header}`}>
+                          <span className={`text-xs ${colors.label}`}>{v}</span>
+                          <span className="text-[10px] text-[#6b828c] font-medium">{forValue.length}</span>
                         </div>
-                        <p className="text-lg font-bold text-[#092E3F]">{clientsWithoutLogSource.length}</p>
-                        <p className="text-xs text-gray-600 mt-1">Pending activation</p>
+                        <div className="divide-y divide-[#f4f4f4] overflow-y-auto bg-white" style={{ maxHeight: 140 }}>
+                          {forValue.length === 0
+                            ? <p className="px-2.5 py-2 text-[10px] text-[#6b828c] italic">None</p>
+                            : forValue.map(c => (
+                              <div key={c.id} className="px-2.5 py-1.5 text-xs text-[#092E3F] flex items-center gap-1.5">
+                                {c.name}
+                                {c.name === baselineTenant && (
+                                  <span className="px-1.5 py-0.5 rounded-[4px] bg-[#092E3F] text-white text-[9px] font-semibold uppercase tracking-wide">Baseline</span>
+                                )}
+                              </div>
+                            ))
+                          }
+                        </div>
                       </div>
-                    )}
-                  </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -440,7 +465,11 @@ export default function ValueMatrixModal({
               onClick={handleApply}
               className="px-6 py-2 bg-[#092e3f] text-white rounded text-sm hover:bg-[#092e3f]/90 transition-colors"
             >
-              {showKQL ? 'Confirm Alignment' : 'Save'}
+              {showKQL
+                ? currentValue === rule.value
+                  ? `Restore Baseline Value (${currentValue})`
+                  : `Align All to ${currentValue}`
+                : 'Save'}
             </button>
           </div>
         </div>

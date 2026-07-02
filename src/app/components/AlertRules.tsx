@@ -8,6 +8,7 @@ import ClientMisalignmentSidebar from './ClientMisalignmentSidebar';
 import DataRequiredSidebar from './DataRequiredSidebar';
 import DataRequiredSidebarV2 from './DataRequiredSidebarV2';
 import ValueMatrixModal from './ValueMatrixModal';
+import RuleActionSidebar, { getLatestVersion } from './RuleActionSidebar';
 import VersionAlignmentModal from './VersionAlignmentModal';
 import ValueDistributeModal from './ValueDistributeModal';
 import SzCommandCard from '../../imports/SzCommandCard2/SzCommandCard2';
@@ -65,8 +66,8 @@ interface AlertRule {
   state: 'Enabled' | 'Disabled';
   clientsApplied: number;
   clientNames?: string[];
-  attention: 'High Value Alert' | 'Low Value Alert' | 'Medium Value Alert' | 'Version Misalignment' | 'Value Misalignment' | 'Disable Aligned' | 'New Rule' | 'Client Misalignment' | 'Prerequisites Required' | 'Data Required';
-  action: 'Enable' | 'Disable' | 'Align' | 'Distribute' | 'Align Version' | 'Align Value' | 'Align Clients' | 'Value & Distribute' | 'Install & Enable' | 'Provide Data';
+  attention: 'High Value Alert' | 'Low Value Alert' | 'Medium Value Alert' | 'Not Up to Date' | 'Version Misalignment' | 'Value Misalignment' | 'Disable Aligned' | 'New Rule' | 'Client Misalignment' | 'Prerequisites Required' | 'Data Required';
+  action: 'Enable' | 'Disable' | 'Update' | 'Align' | 'Distribute' | 'Align Version' | 'Align Value' | 'Align Clients' | 'Value & Distribute' | 'Install & Enable' | 'Provide Data';
   isNewlyImported?: boolean;
   sourceTenantId?: string;
   valueExplanation?: string;
@@ -248,6 +249,36 @@ SecurityEvent
 | summarize Count = count() by Computer, Account, CommandLine, TimeGenerated
 | where Count > 2
 | project TimeGenerated, Computer, Account, CommandLine`
+  },
+  {
+    id: 'low-1',
+    name: 'Legacy TLS Protocol Usage Detected',
+    description: 'Flags connections that negotiate deprecated TLS 1.0/1.1 protocols. Generates a high volume of informational alerts with little actionable detection value in modern, patched environments.',
+    author: 'Microsoft',
+    version: '1.0.2',
+    mitre: ['Defense Evasion'],
+    logSources: ['AzureDiagnostics'],
+    value: 'Low',
+    state: 'Enabled',
+    clientsApplied: 9,
+    clientNames: ['Nike', 'Adidas', 'Apple', 'Microsoft', 'Google', 'Tesla', 'Netflix', 'Adobe', 'SAP'],
+    attention: 'Low Value Alert',
+    action: 'Disable',
+  },
+  {
+    id: 'update-1',
+    name: 'Impossible Travel Detection',
+    description: 'Detects sign-ins from geographically distant locations within an impossibly short time window. A newer version with improved geo-resolution and lower false-positive rates is available.',
+    author: 'Microsoft',
+    version: '1.4.0',
+    mitre: ['Initial Access', 'Credential Access'],
+    logSources: ['SigninLogs'],
+    value: 'High',
+    state: 'Enabled',
+    clientsApplied: 11,
+    clientNames: ['Nike', 'Adidas', 'Apple', 'Microsoft', 'Google', 'Amazon', 'Tesla', 'Meta', 'Netflix', 'Adobe', 'SAP'],
+    attention: 'Not Up to Date',
+    action: 'Update',
   },
   {
     id: '1',
@@ -719,6 +750,7 @@ export default function AlertRules() {
   const [contentHubRule, setContentHubRule] = useState<AlertRule | null>(null);
   const [clientMisalignmentRule, setClientMisalignmentRule] = useState<AlertRule | null>(null);
   const [dataRequiredRule, setDataRequiredRule] = useState<AlertRule | null>(null);
+  const [actionSidebarRule, setActionSidebarRule] = useState<AlertRule | null>(null);
 
   // Dismissal state — persisted to localStorage
   const STORAGE_KEY = 'seculyze-dismissals-v1';
@@ -911,6 +943,8 @@ export default function AlertRules() {
   const attentionCount = useMemo(() => {
     return alertRules.filter(rule =>
       rule.attention === 'High Value Alert' ||
+      rule.attention === 'Low Value Alert' ||
+      rule.attention === 'Not Up to Date' ||
       rule.attention === 'Version Misalignment' ||
       rule.attention === 'Disable Aligned' ||
       rule.attention === 'New Rule' ||
@@ -944,7 +978,7 @@ export default function AlertRules() {
 
       // Filter by card action
       const matchesCardFilter = !cardFilter ||
-        (cardFilter === 'update' && rule.action === 'Enable') ||
+        (cardFilter === 'update' && rule.action === 'Update') ||
         (cardFilter === 'enable' && rule.state === 'Disabled' && rule.action === 'Enable') ||
         (cardFilter === 'disable' && rule.action === 'Disable');
 
@@ -1111,6 +1145,7 @@ export default function AlertRules() {
     'High Value Alert',
     'Medium Value Alert',
     'Low Value Alert',
+    'Not Up to Date',
     'New Rule',
     'Client Misalignment',
     'Version Misalignment',
@@ -1251,7 +1286,7 @@ export default function AlertRules() {
                       <Building2 className="w-3 h-3 text-[#2A96A8]" />
                     </div>
                     <div className="text-left">
-                      <p className="text-[10px] text-[#092E3F]/50 uppercase tracking-wider leading-none mb-0.5">Distribution Source</p>
+                      <p className="text-[10px] text-[#092E3F]/50 uppercase tracking-wider leading-none mb-0.5">Baseline Tenant</p>
                       <p className="text-xs font-semibold text-[#092E3F] leading-none">{distributionSource}</p>
                     </div>
                     <ChevronDown className="w-3.5 h-3.5 text-[#092E3F]/40 ml-1" />
@@ -1262,7 +1297,7 @@ export default function AlertRules() {
                       <div className="fixed inset-0 z-40" onClick={() => setIsSourceDropdownOpen(false)} />
                       <div className="absolute right-0 top-full mt-2 w-64 bg-white rounded-xl shadow-xl border border-gray-100 z-50 overflow-hidden">
                         <div className="px-4 py-3 border-b border-gray-100 bg-[#f8fdfe]">
-                          <p className="text-[10px] uppercase tracking-widest text-[#2A96A8] font-medium mb-0.5">Change Distribution Source</p>
+                          <p className="text-[10px] uppercase tracking-widest text-[#2A96A8] font-medium mb-0.5">Change Baseline Tenant</p>
                           <p className="text-[11px] text-[#092E3F]/60">Select the master workspace to sync rules from</p>
                         </div>
                         <div className="px-3 pt-2 pb-1">
@@ -1315,7 +1350,7 @@ export default function AlertRules() {
           {distributionSource && (
             <p className="text-xs text-[#092E3F]/40">
               <span className="font-medium text-[#092E3F]/60">Workflow:</span>
-              {' '}Test rules in distribution source → Select source tenant → Select tested rules → Distribute to other client workspaces
+              {' '}Set a baseline tenant → Review deviations from the baseline → Align tenants back to the baseline
             </p>
           )}
         </div>
@@ -1326,9 +1361,9 @@ export default function AlertRules() {
             <div className="w-20 h-20 rounded-2xl bg-[#2A96A8]/10 flex items-center justify-center mb-6">
               <Building2 className="w-10 h-10 text-[#2A96A8]" />
             </div>
-            <h2 className="text-xl font-semibold text-[#092E3F] mb-2">Select a Distribution Source</h2>
+            <h2 className="text-xl font-semibold text-[#092E3F] mb-2">Select a Baseline Tenant</h2>
             <p className="text-sm text-[#092E3F]/50 max-w-sm mb-8">
-              Choose a master tenant workspace to sync and distribute alert rules from. Alert rules will be pulled from this workspace.
+              Choose the tenant workspace that serves as your source of truth. When other tenants deviate from it, we'll recommend aligning them back to the baseline.
             </p>
             <div className="w-full max-w-sm mb-4">
               <div className="relative mb-3">
@@ -1413,20 +1448,21 @@ export default function AlertRules() {
                     <AlertTriangle className="w-5 h-5 text-amber-600" />
                   </div>
                   <div>
-                    <h3 className="text-base font-semibold text-[#092E3F]">Change Distribution Source?</h3>
-                    <p className="text-sm text-[#092E3F]/60 mt-0.5">This will replace your current workspace</p>
+                    <h3 className="text-base font-semibold text-[#092E3F]">Change Baseline Tenant?</h3>
+                    <p className="text-sm text-[#092E3F]/60 mt-0.5">This will replace your current source of truth</p>
                   </div>
                 </div>
               </div>
               <div className="px-6 py-5">
                 <p className="text-sm text-[#092E3F]/70 mb-4">
-                  You are about to switch the distribution source from{' '}
+                  You are about to switch the baseline tenant from{' '}
                   <span className="font-semibold text-[#092E3F]">{distributionSource}</span> to{' '}
                   <span className="font-semibold text-[#092E3F]">{pendingSourceChange}</span>.
                 </p>
                 <ul className="space-y-2 mb-5">
                   {[
                     'Alert rules will be re-synced from the new workspace',
+                    'All recommendations will be recalculated against the new baseline',
                     'Your current filters and view settings will reset',
                     'Dismissal history will be preserved',
                   ].map((item, i) => (
@@ -1472,7 +1508,7 @@ export default function AlertRules() {
             <SzCommandCard
               enabled={alertRules.filter(r => r.state === 'Enabled').length}
               total={alertRules.length}
-              updateCount={alertRules.filter(r => r.action === 'Enable').length}
+              updateCount={alertRules.filter(r => r.action === 'Update').length}
               enableCount={alertRules.filter(r => r.state === 'Disabled' && r.action === 'Enable').length}
               disableCount={alertRules.filter(r => r.action === 'Disable').length}
               onUpdateClick={() => {
@@ -1519,7 +1555,7 @@ export default function AlertRules() {
                 } else {
                   setSelectedFilters(prev => ({
                     ...prev,
-                    attention: ['High Value Alert', 'Version Misalignment', 'Disable Aligned', 'New Rule', 'Client Misalignment']
+                    attention: ['High Value Alert', 'Low Value Alert', 'Not Up to Date', 'Version Misalignment', 'Disable Aligned', 'New Rule', 'Client Misalignment']
                   }));
                   toast.success('Showing all items needing attention');
                 }
@@ -2550,28 +2586,20 @@ export default function AlertRules() {
                           <TooltipProvider>
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <span className={`px-3 py-1.5 rounded-full text-xs whitespace-nowrap cursor-help ${
-                                  rule.attention === 'High Value Alert'
-                                    ? 'bg-[#b73520] text-white'
-                                    : rule.attention === 'Medium Value Alert'
-                                    ? 'bg-[#ffdbb4] text-[#092E3F]'
-                                    : rule.attention === 'Low Value Alert'
-                                    ? 'bg-[#fff9a8] text-[#092E3F]'
-                                    : rule.attention === 'Version Misalignment'
-                                    ? 'bg-orange-100 text-orange-700'
-                                    : rule.attention === 'Disable Aligned'
-                                    ? 'bg-emerald-100 text-emerald-700'
-                                    : rule.attention === 'New Rule'
-                                    ? 'bg-blue-100 text-blue-700'
-                                    : rule.attention === 'Client Misalignment'
-                                    ? 'bg-purple-100 text-purple-700'
-                                    : rule.attention === 'Value Misalignment'
-                                    ? 'bg-pink-100 text-pink-700'
-                                    : rule.attention === 'Prerequisites Required'
-                                    ? 'bg-violet-100 text-violet-700'
-                                    : rule.attention === 'Data Required'
-                                    ? 'bg-teal-100 text-teal-700'
-                                    : 'bg-gray-100 text-gray-700'
+                                <span className={`inline-flex items-center px-2 py-1 rounded-[4px] text-[11px] font-medium whitespace-nowrap cursor-help ${
+                                  // teal = opportunity, amber = misalignment, slate = needs setup
+                                  rule.attention === 'High Value Alert' ||
+                                  rule.attention === 'Medium Value Alert' ||
+                                  rule.attention === 'Low Value Alert' ||
+                                  rule.attention === 'New Rule' ||
+                                  rule.attention === 'Disable Aligned'
+                                    ? 'bg-[#e5f2f4] text-[#1e7d8f]'
+                                    : rule.attention === 'Version Misalignment' ||
+                                      rule.attention === 'Value Misalignment' ||
+                                      rule.attention === 'Client Misalignment' ||
+                                      rule.attention === 'Not Up to Date'
+                                    ? 'bg-amber-50 text-amber-700'
+                                    : 'bg-[#eef1f3] text-[#5c707a]'
                                 }`}>
                                   {rule.attention}
                                 </span>
@@ -2580,12 +2608,13 @@ export default function AlertRules() {
                                 {{
                                   'High Value Alert': 'High-value rule is currently disabled. Enable it to strengthen detection coverage.',
                                   'Medium Value Alert': 'Review this rule\'s value classification — it may need tuning based on recent performance.',
-                                  'Low Value Alert': 'Rule generates noise with low detection return. Consider disabling to reduce alert fatigue.',
-                                  'Version Misalignment': 'Clients are running different rule versions. Align to a single version for consistent detection.',
-                                  'Value Misalignment': `A client changed their value recommendation${rule.recommendedValue ? ` to ${rule.recommendedValue}` : ''}. Align all clients to the same value.`,
+                                  'Low Value Alert': 'This low-value rule is enabled and generates noise with little detection return. Disable it to reduce alert fatigue.',
+                                  'Not Up to Date': 'A newer version of this rule is available. Update to get the latest detection logic and fixes.',
+                                  'Version Misalignment': `Some tenants run a different rule version than your baseline tenant${distributionSource ? ` (${distributionSource})` : ''}. We recommend aligning them to the baseline version.`,
+                                  'Value Misalignment': `A tenant changed this rule's value${rule.recommendedValue ? ` to ${rule.recommendedValue}` : ''}. Your baseline tenant${distributionSource ? ` (${distributionSource})` : ''} has it ${rule.value} — we recommend restoring the baseline value.`,
                                   'Disable Aligned': 'All clients agree this rule should be disabled. Apply the disable across all tenants.',
                                   'New Rule': 'Newly imported rule — not yet distributed to clients. Set value and distribute to begin protecting tenants.',
-                                  'Client Misalignment': `Rule is enabled for ${rule.clientStates ? Object.values(rule.clientStates).filter(c => c.enabled).length : '?'} clients and disabled for others. Synchronise the state.`,
+                                  'Client Misalignment': `Rule enablement differs across tenants. We recommend matching your baseline tenant${distributionSource ? ` (${distributionSource})` : ''}.`,
                                   'Prerequisites Required': 'Required Content Hub packages must be installed in the Sentinel workspace before this rule can be enabled.',
                                   'Data Required': 'Customer-specific watchlist data must be uploaded before this rule can be deployed.',
                                 }[rule.attention] ?? rule.attention}
@@ -2615,33 +2644,13 @@ export default function AlertRules() {
                                 setValueDistributeModalRule(rule);
                               } else if (rule.attention === 'Client Misalignment') {
                                 setClientMisalignmentRule(rule);
-                              } else if (rule.action === 'Enable' || rule.action === 'Disable') {
-                                toast.success(`${rule.action}d rule: ${rule.name}`);
+                              } else if (rule.action === 'Enable' || rule.action === 'Disable' || rule.action === 'Update') {
+                                setActionSidebarRule(rule);
                               } else {
                                 toast.success(`${rule.action}${rule.action === 'Align' || rule.action === 'Distribute' ? 'ed' : 'd'} rule: ${rule.name}`);
                               }
                             }}
-                            className={`px-3 py-1 rounded-lg text-xs transition-colors ${
-                              rule.action === 'Enable'
-                                ? 'bg-emerald-100/70 text-emerald-600 hover:bg-emerald-200'
-                                : rule.action === 'Disable'
-                                ? 'bg-gray-100/80 text-gray-500 hover:bg-gray-200'
-                                : rule.action === 'Align'
-                                ? 'bg-orange-100 text-orange-600 hover:bg-orange-200'
-                                : rule.action === 'Align Version'
-                                ? 'bg-orange-100 text-orange-600 hover:bg-orange-200'
-                                : rule.action === 'Align Value'
-                                ? 'bg-pink-100 text-pink-600 hover:bg-pink-200'
-                                : rule.action === 'Distribute'
-                                ? 'bg-blue-100 text-blue-600 hover:bg-blue-200'
-                                : rule.action === 'Value & Distribute'
-                                ? 'bg-blue-100 text-blue-600 hover:bg-blue-200'
-                                : rule.attention === 'Prerequisites Required'
-                                ? 'bg-violet-100 text-violet-700 hover:bg-violet-200'
-                                : rule.action === 'Provide Data'
-                                ? 'bg-teal-100 text-teal-700 hover:bg-teal-200'
-                                : 'bg-gray-100/80 text-gray-500 hover:bg-gray-200'
-                            }`}
+                            className="w-[130px] py-1.5 rounded-[4px] text-xs font-medium whitespace-nowrap text-center transition-colors bg-white border border-[#c9d6dc] text-[#092E3F] shadow-[0_1px_1px_rgba(9,46,63,0.05)] hover:bg-[#092E3F] hover:border-[#092E3F] hover:text-white"
                           >
                             {rule.action}
                           </button>
@@ -2869,6 +2878,7 @@ export default function AlertRules() {
       {clientMisalignmentRule && (
         <ClientMisalignmentSidebar
           rule={clientMisalignmentRule}
+          baselineTenant={distributionSource ?? undefined}
           onClose={() => setClientMisalignmentRule(null)}
           onAligned={(enabledAll) => {
             setAlertRules(prev =>
@@ -2886,10 +2896,52 @@ export default function AlertRules() {
         />
       )}
 
+      {/* Enable / Disable / Update preview sidebar */}
+      {actionSidebarRule && (
+        <RuleActionSidebar
+          rule={actionSidebarRule}
+          baselineTenant={distributionSource ?? undefined}
+          onClose={() => setActionSidebarRule(null)}
+          onConfirm={() => {
+            const r = actionSidebarRule;
+            setAlertRules(prev => prev.map(rule => {
+              if (rule.id !== r.id) return rule;
+              if (r.action === 'Enable') {
+                return { ...rule, state: 'Enabled' as const, action: 'Disable' as const };
+              }
+              if (r.action === 'Disable') {
+                return { ...rule, state: 'Disabled' as const, action: 'Enable' as const };
+              }
+              // Update: bump to the latest version; the rule keeps state, value and
+              // attention resolves to its value classification
+              const resolvedAttention = (rule.value === 'High'
+                ? 'High Value Alert'
+                : rule.value === 'Medium'
+                ? 'Medium Value Alert'
+                : 'Low Value Alert') as AlertRule['attention'];
+              return {
+                ...rule,
+                version: getLatestVersion(rule.version),
+                attention: resolvedAttention,
+                action: (rule.state === 'Enabled' ? 'Disable' : 'Enable') as AlertRule['action'],
+              };
+            }));
+            const label = r.action === 'Enable'
+              ? `Enabled rule: ${r.name}`
+              : r.action === 'Disable'
+              ? `Disabled rule: ${r.name}`
+              : `Updated ${r.name} to v${getLatestVersion(r.version)}`;
+            toast.success(label);
+            setActionSidebarRule(null);
+          }}
+        />
+      )}
+
       {/* Value Matrix Modal */}
       {valueMatrixModalRule && (
         <ValueMatrixModal
           rule={valueMatrixModalRule}
+          baselineTenant={distributionSource ?? undefined}
           onClose={() => setValueMatrixModalRule(null)}
           onApply={(value, explanation) => {
             console.log('Applying value:', value, 'Explanation:', explanation);
@@ -2903,6 +2955,7 @@ export default function AlertRules() {
       {versionAlignmentModalRule && (
         <VersionAlignmentModal
           rule={versionAlignmentModalRule}
+          baselineTenant={distributionSource ?? undefined}
           onClose={() => setVersionAlignmentModalRule(null)}
           onAlign={(selectedVersion) => {
             console.log('Aligning to version:', selectedVersion);

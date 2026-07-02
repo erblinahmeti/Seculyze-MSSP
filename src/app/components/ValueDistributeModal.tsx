@@ -66,7 +66,7 @@ export default function ValueDistributeModal({
   onClose,
   onDistribute,
 }: ValueDistributeModalProps) {
-  const [position, setPosition] = useState<MatrixPosition>({ gain: 'high', cost: 'low' });
+  const [position, setPosition] = useState<MatrixPosition | null>(null);
   const [explanation, setExplanation] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [applyAllEnabled, setApplyAllEnabled] = useState(true);
@@ -76,7 +76,7 @@ export default function ValueDistributeModal({
       .map(c => ({ ...c, enabled: c.hasLogSources }))
   );
 
-  const currentValue = getValueFromPosition(position);
+  const currentValue = position ? getValueFromPosition(position) : null;
 
   const sourceTenant = initialClients.find(c => c.id === sourceTenantId);
   const filteredClients = clients.filter(c =>
@@ -98,12 +98,16 @@ export default function ValueDistributeModal({
   };
 
   const handleReset = () => {
-    setPosition({ gain: 'high', cost: 'low' });
+    setPosition(null);
     setExplanation('');
-    toast.info('Reset to default value and explanation');
+    toast.info('Value and explanation cleared');
   };
 
   const handleDistribute = () => {
+    if (!position) {
+      toast.error('Please select a value on the matrix before distributing');
+      return;
+    }
     if (!explanation.trim()) {
       toast.error('Please provide an explanation for the value recommendation');
       return;
@@ -126,7 +130,7 @@ export default function ValueDistributeModal({
   };
 
   const isSelected = (gain: 'high' | 'medium' | 'low', cost: 'low' | 'medium' | 'high') =>
-    position.gain === gain && position.cost === cost;
+    position !== null && position.gain === gain && position.cost === cost;
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-end bg-black/20 backdrop-blur-sm">
@@ -171,27 +175,30 @@ export default function ValueDistributeModal({
             {/* Overall Value */}
             <div>
               <div className="flex items-center justify-between mb-1">
-                <div>
-                  <span className="text-xs font-light text-[#092E3F] uppercase">Overall Value: </span>
-                  <span className={`text-xs font-black uppercase ${
-                    currentValue === 'High' ? 'text-[#76ba3b]' :
-                    currentValue === 'Medium' ? 'text-[#e0a800]' :
-                    'text-[#6b828c]'
-                  }`}>
-                    {currentValue}
-                  </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-light text-[#092E3F] uppercase">Overall Value:</span>
+                  {currentValue ? (
+                    <span className={`text-xs font-black uppercase ${
+                      currentValue === 'High' ? 'text-[#76ba3b]' :
+                      currentValue === 'Medium' ? 'text-[#e0a800]' :
+                      'text-[#6b828c]'
+                    }`}>
+                      {currentValue}
+                    </span>
+                  ) : (
+                    <span className="text-xs font-medium text-amber-500">Not set — click a cell below</span>
+                  )}
                 </div>
-                <button
-                  onClick={handleReset}
-                  className="text-xs text-[#d6d6d6] hover:text-[#092E3F] transition-colors flex items-center gap-1"
-                >
-                  <span>Reset to default</span>
-                  <svg className="w-3.5 h-3.5 rotate-180 -scale-y-100" fill="currentColor" viewBox="0 0 16 17.5">
-                    <path d="M8,0 L16,0 L16,8 L14,8 L14,3.41 L6.71,10.71 L5.29,9.29 L12.59,2 L8,2 L8,0 Z M0,5 L0,17.5 L14,17.5 L14,11.5 L12,11.5 L12,15.5 L2,15.5 L2,7 L6,7 L6,5 L0,5 Z" />
-                  </svg>
-                </button>
+                {position && (
+                  <button
+                    onClick={handleReset}
+                    className="text-xs text-[#d6d6d6] hover:text-[#092E3F] transition-colors"
+                  >
+                    Clear
+                  </button>
+                )}
               </div>
-              <p className="text-xs text-[#6b828c]">Move the marker to adjust overall value</p>
+              <p className="text-xs text-[#6b828c]">Click a cell on the matrix to set the value</p>
             </div>
 
             {/* 3×3 Gain vs Cost Matrix */}
@@ -352,7 +359,7 @@ export default function ValueDistributeModal({
             </button>
             <button
               onClick={handleDistribute}
-              disabled={enabledCount === 0}
+              disabled={!position || enabledCount === 0}
               className="px-6 py-2 bg-[#092e3f] text-white rounded text-sm hover:bg-[#092e3f]/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Set Value & Distribute

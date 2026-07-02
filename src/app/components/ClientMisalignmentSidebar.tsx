@@ -19,6 +19,7 @@ interface AlertRule {
 
 interface ClientMisalignmentSidebarProps {
   rule: AlertRule;
+  baselineTenant?: string;
   onClose: () => void;
   onAligned?: (enabledAll: boolean) => void;
 }
@@ -30,7 +31,7 @@ const LEVEL_COLORS: Record<string, string> = {
   'Level 4': 'bg-amber-50 text-amber-600',
 };
 
-export default function ClientMisalignmentSidebar({ rule, onClose, onAligned }: ClientMisalignmentSidebarProps) {
+export default function ClientMisalignmentSidebar({ rule, baselineTenant, onClose, onAligned }: ClientMisalignmentSidebarProps) {
   const initialClients: Client[] = Object.entries(rule.clientStates ?? {}).map(([name, data]) => ({
     name,
     level: data.level,
@@ -80,25 +81,31 @@ export default function ClientMisalignmentSidebar({ rule, onClose, onAligned }: 
         <div className="flex-1 overflow-y-auto">
           <div className="px-6 py-5 space-y-5">
 
-            {/* Recommended alignment direction */}
+            {/* Recommended alignment direction — follow the baseline tenant */}
             {(() => {
-              const majority = enabledClients.length >= disabledClients.length ? 'enabled' : 'disabled';
-              const minorityCount = majority === 'enabled' ? disabledClients.length : enabledClients.length;
-              const majorityCount = majority === 'enabled' ? enabledClients.length : disabledClients.length;
+              const baselineClient = baselineTenant ? clients.find(c => c.name === baselineTenant) : undefined;
+              // Baseline tenant's state is the source of truth; fall back to majority if it isn't in this rule's client list
+              const target = baselineClient
+                ? (baselineClient.enabled ? 'enabled' : 'disabled')
+                : (enabledClients.length >= disabledClients.length ? 'enabled' : 'disabled');
+              const misalignedCount = target === 'enabled' ? disabledClients.length : enabledClients.length;
               return (
-                <div className={`rounded-xl p-4 border ${majority === 'enabled' ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'}`}>
+                <div className={`rounded-xl p-4 border ${target === 'enabled' ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'}`}>
                   <div className="flex items-start gap-3">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${majority === 'enabled' ? 'bg-green-100' : 'bg-gray-200'}`}>
-                      <ArrowRight className={`w-4 h-4 ${majority === 'enabled' ? 'text-green-700' : 'text-gray-600'}`} />
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${target === 'enabled' ? 'bg-green-100' : 'bg-gray-200'}`}>
+                      <ArrowRight className={`w-4 h-4 ${target === 'enabled' ? 'text-green-700' : 'text-gray-600'}`} />
                     </div>
                     <div>
                       <p className="text-sm font-medium text-[#092E3F] mb-0.5">
-                        Recommended: <span className={majority === 'enabled' ? 'text-green-700' : 'text-gray-600'}>
-                          {majority === 'enabled' ? 'Enable All' : 'Disable All'}
+                        Recommended: <span className={target === 'enabled' ? 'text-green-700' : 'text-gray-600'}>
+                          {target === 'enabled' ? 'Enable All' : 'Disable All'}
                         </span>
                       </p>
                       <p className="text-xs text-[#092E3F]/70">
-                        {majorityCount} of {clients.length} clients have this rule {majority}. Align the remaining {minorityCount} to match.
+                        {baselineClient
+                          ? <>Your baseline tenant <span className="font-semibold">{baselineTenant}</span> has this rule {target}. Align the remaining {misalignedCount} tenant{misalignedCount !== 1 ? 's' : ''} to match the baseline.</>
+                          : <>{target === 'enabled' ? enabledClients.length : disabledClients.length} of {clients.length} clients have this rule {target}. Align the remaining {misalignedCount} to match.</>
+                        }
                       </p>
                     </div>
                   </div>
@@ -160,6 +167,9 @@ export default function ClientMisalignmentSidebar({ rule, onClose, onAligned }: 
                       <div className="flex items-center gap-3">
                         <Users className="w-3.5 h-3.5 text-[#6b828c] shrink-0" />
                         <span className="text-sm font-medium text-[#092E3F]">{client.name}</span>
+                        {client.name === baselineTenant && (
+                          <span className="px-1.5 py-0.5 rounded-[4px] bg-[#092E3F] text-white text-[9px] font-semibold uppercase tracking-wide">Baseline</span>
+                        )}
                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${LEVEL_COLORS[client.level]}`}>
                           {client.level}
                         </span>
@@ -200,6 +210,9 @@ export default function ClientMisalignmentSidebar({ rule, onClose, onAligned }: 
                       <div className="flex items-center gap-3">
                         <Users className="w-3.5 h-3.5 text-[#6b828c] shrink-0" />
                         <span className="text-sm font-medium text-[#092E3F]">{client.name}</span>
+                        {client.name === baselineTenant && (
+                          <span className="px-1.5 py-0.5 rounded-[4px] bg-[#092E3F] text-white text-[9px] font-semibold uppercase tracking-wide">Baseline</span>
+                        )}
                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${LEVEL_COLORS[client.level]}`}>
                           {client.level}
                         </span>
